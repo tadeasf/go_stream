@@ -1,17 +1,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v2"
 )
 
 const version = "1.0.0"
@@ -22,6 +27,14 @@ var (
 	green   = color.New(color.FgGreen).SprintFunc()
 	magenta = color.New(color.FgMagenta).SprintFunc()
 )
+
+type Config struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+var configDir = filepath.Join(os.Getenv("HOME"), ".config", "go_stream")
+var configFile = filepath.Join(configDir, "config.yaml")
 
 func main() {
 	app := &cli.App{
@@ -44,8 +57,17 @@ func main() {
 						Value:   8069,
 						Usage:   "Port to serve on",
 					},
+					&cli.BoolFlag{
+						Name:  "auth",
+						Usage: "Enable basic authentication",
+					},
 				},
 				Action: serveAction,
+			},
+			{
+				Name:   "basic_auth",
+				Usage:  "Set up basic authentication",
+				Action: basicAuthAction,
 			},
 		},
 	}
@@ -59,25 +81,76 @@ func main() {
 func serveAction(c *cli.Context) error {
 	recursive := c.Bool("recursive")
 	port := c.Int("port")
+	useAuth := c.Bool("auth")
 
-	fmt.Print(cyan("Enter the directory path: "))
-	dir := prompt.Input("", pathCompleter,
-		prompt.OptionPrefix(""),
-		prompt.OptionPrefixTextColor(prompt.Yellow),
-		prompt.OptionSuggestionBGColor(prompt.DarkGray),
-		prompt.OptionSuggestionTextColor(prompt.White),
-		prompt.OptionSelectedSuggestionBGColor(prompt.LightGray),
-		prompt.OptionSelectedSuggestionTextColor(prompt.Black),
-	)
-	dir = strings.TrimSpace(dir)
+	// Create a context that we can cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a channel to handle interrupts
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+
+	// Create a channel for input
+	inputCh := make(chan string, 1)
+
+	// Start a goroutine to read user input with path completion
+	go func() {
+		p := prompt.New(
+			func(in string) {
+				inputCh <- in
+			},
+			pathCompleter,
+			prompt.OptionPrefix("Enter the directory path: "),
+			prompt.OptionPrefixTextColor(prompt.Yellow),
+			prompt.OptionSuggestionBGColor(prompt.DarkGray),
+			prompt.OptionSuggestionTextColor(prompt.White),
+			prompt.OptionSelectedSuggestionBGColor(prompt.LightGray),
+			prompt.OptionSelectedSuggestionTextColor(prompt.Black),
+			prompt.OptionInputTextColor(prompt.Cyan),
+		)
+
+		go func() {
+			select {
+			case <-ctx.Done():
+				// Force the prompt to exit by sending a newline
+				fmt.Println()
+			}
+		}()
+
+		inputCh <- p.Input()
+	}()
+
+	// Wait for either user input or interrupt
+	var dir string
+	select {
+	case input := <-inputCh:
+		dir = strings.TrimSpace(input)
+		cancel() // Cancel the context to stop the prompt
+	case <-interrupt:
+		cancel() // Cancel the context to stop the prompt
+		fmt.Println(yellow("\nInterrupted. Exiting..."))
+		return nil
+	}
 
 	if dir == "" {
 		return fmt.Errorf(yellow("directory path cannot be empty"))
 	}
 
+	// Rest of the function remains the same
 	videos := findVideos(dir, recursive)
 	ip := getOutboundIP()
 	playlist := generatePlaylist(videos, ip, port)
+
+	var handler http.Handler = http.DefaultServeMux
+
+	if useAuth {
+		config, err := loadConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load authentication config: %w", err)
+		}
+		handler = basicAuth(handler, config.Username, config.Password)
+	}
 
 	http.HandleFunc("/playlist.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -87,8 +160,61 @@ func serveAction(c *cli.Context) error {
 	http.Handle("/videos/", http.StripPrefix("/videos/", http.FileServer(http.Dir(dir))))
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
-	fmt.Printf(green("Serving playlist at http://%s:%d/playlist.m3u8\n"), ip, port)
-	return http.ListenAndServe(addr, nil)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+
+	go func() {
+		fmt.Printf(green("Serving playlist at http://%s:%d/playlist.m3u8\n"), ip, port)
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("ListenAndServe(): %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	<-interrupt
+	fmt.Println(yellow("\nShutting down server..."))
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("server shutdown failed: %w", err)
+	}
+
+	fmt.Println(green("Server gracefully stopped"))
+	return nil
+}
+
+func basicAuthAction(c *cli.Context) error {
+	fmt.Println(cyan("Setting up basic authentication"))
+
+	username := prompt.Input("Enter username: ", nil)
+	password := prompt.Input("Enter password: ", nil)
+
+	config := Config{
+		Username: username,
+		Password: password,
+	}
+
+	err := os.MkdirAll(configDir, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	data, err := yaml.Marshal(&config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	err = os.WriteFile(configFile, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	fmt.Println(green("Basic authentication configured successfully"))
+	return nil
 }
 
 func findVideos(root string, recursive bool) []string {
@@ -154,5 +280,32 @@ func pathCompleter(d prompt.Document) []prompt.Suggest {
 			suggestions = append(suggestions, prompt.Suggest{Text: filepath.Join(dir, file.Name()) + "/"})
 		}
 	}
-	return prompt.FilterHasPrefix(suggestions, d.Text, true)
+	return prompt.FilterHasPrefix(suggestions, d.GetWordBeforeCursor(), true)
+}
+
+func loadConfig() (*Config, error) {
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func basicAuth(next http.Handler, username, password string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != username || pass != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
