@@ -1,30 +1,30 @@
 .env
 go_stream
-video-player/node_modules
-video-player/dist
+frontend/node_modules
+frontend/dist
 # Logs
-video-player/logs
-video-player/*.log
-video-player/npm-debug.log*
+api/logs
+api/*.log
+api/npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-video-player/lerna-debug.log*
+lerna-debug.log*
 
-video-player/node_modules
+node_modules
 video-player/dist
-video-player/dist-ssr
-video-player/*.local
+dist-ssr
+*.local
 
 # Editor directories and files
 video-player/.vscode/*
 !.vscode/extensions.json
-video-player/.idea
-video-player/.DS_Store
-video-player/*.suo
+.idea
+.DS_Store
+*.suo
 video-player/*.ntvs*
-video-player/*.njsproj
-video-player/*.sln
-video-player/*.sw?
-video-player/.env
+*.njsproj
+*.sln
+*.sw?
+.env
 node_modules

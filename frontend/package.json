@@ -3,12 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173 --mode production",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start:frontend": "vite --host 0.0.0.0",
-    "start": "node start.js"
+    "start:frontend": "bun run dev"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",

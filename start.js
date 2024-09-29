@@ -1,36 +1,37 @@
 import { spawn } from 'child_process';
 import axios from 'axios';
 import inquirer from 'inquirer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 (async () => {
-  // Prompt the user for the backend path
-  const { path } = await inquirer.prompt([
+  const { videoPath } = await inquirer.prompt([
     {
       type: 'input',
-      name: 'path',
-      message: 'Enter the path for the backend:',
+      name: 'videoPath',
+      message: 'Enter the path for the video directory:',
       default: '/home/tadeas/xxx',
     }
   ]);
 
-  // Start the backend with the provided path
-  const backend = spawn('go', ['run', '/home/tadeas/go_stream/src/main.go', 'api', '--path', path, '-r'], {
-    cwd: '..',
+  const goStreamPath = path.join(__dirname, 'go_stream');
+  const backend = spawn(goStreamPath, ['api', '--path', videoPath, '-r'], {
+    cwd: path.join(__dirname, '..'),
     stdio: 'inherit'
   });
 
-  // Function to check if the backend is ready
   const checkBackend = async () => {
     try {
       await axios.get('http://localhost:8069/api/v1/playlist/list');
       console.log('Backend is ready. Starting frontend...');
       
-      // Start the frontend
       const frontend = spawn('npm', ['run', 'start:frontend'], {
+        cwd: path.join(__dirname, 'frontend'),
         stdio: 'inherit'
       });
 
-      // Handle frontend process termination
       frontend.on('close', (code) => {
         console.log(`Frontend process exited with code ${code}`);
         backend.kill();
@@ -43,10 +44,8 @@ import inquirer from 'inquirer';
     }
   };
 
-  // Start checking the backend after a short delay
   setTimeout(checkBackend, 2000);
 
-  // Handle process termination
   process.on('SIGINT', () => {
     backend.kill();
     process.exit();
