@@ -5,7 +5,10 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQueryClient } from 'react-query';
 import axios from 'axios';
 
-const API_URL = 'http://185.187.169.230:8069';
+// Replace the hardcoded API_URL with a function to get the base URL
+const getApiUrl = () => {
+  return `${window.location.protocol}//${window.location.hostname}:8069`;
+};
 
 interface Video {
   id: string;
@@ -30,7 +33,7 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: Grid
   }, [videos]);
 
   const deleteMutation = useMutation(
-    (id: string) => axios.delete(`${API_URL}/api/v1/playlist/${id}`),
+    (id: string) => axios.delete(`${getApiUrl()}/api/v1/playlist/${id}`),
     {
       onSuccess: () => {
         queryClient.invalidateQueries('videos');
@@ -84,7 +87,7 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: Grid
         },
       }}
       pageSizeOptions={[5, 10, 25, 50, 100, 250]}
-      onRowClick={(params: GridRowParams) => onVideoSelect(`${API_URL}/videos/${params.row.path}`, params.row.id)}
+      onRowClick={(params: GridRowParams) => onVideoSelect(`${getApiUrl()}/videos/${params.row.path}`, params.row.id)}
       autoHeight
       onSortModelChange={onSortModelChange}
       getRowClassName={(params) => params.id === currentVideoId ? 'Mui-selected' : ''}

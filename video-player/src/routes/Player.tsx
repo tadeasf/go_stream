@@ -8,7 +8,10 @@ import VideoPlayer from '../components/VideoPlayer';
 import Grid from '../components/Grid';
 import { GridSortModel } from '@mui/x-data-grid';
 
-const API_URL = 'http://185.187.169.230:8069';
+// Replace the hardcoded API_URL with a function to get the base URL
+const getApiUrl = () => {
+  return `${window.location.protocol}//${window.location.hostname}:8069`;
+};
 
 interface Video {
   id: string;
@@ -23,7 +26,7 @@ function Player() {
   const [sortModel, setSortModel] = useState<GridSortModel>([]);
 
   const { data: videos, isLoading, error } = useQuery<Video[]>('videos', async () => {
-    const response = await axios.get(`${API_URL}/api/v1/playlist/list`);
+    const response = await axios.get(`${getApiUrl()}/api/v1/playlist/list`);
     console.log('API Response:', response.data);
     return response.data;
   });
@@ -34,7 +37,7 @@ function Player() {
   useEffect(() => {
     if (videos && videos.length > 0) {
       const firstVideo = videos[0];
-      setSelectedVideo(`${API_URL}/videos/${firstVideo.path}`);
+      setSelectedVideo(`${getApiUrl()}/videos/${firstVideo.path}`);
       setCurrentVideoId(firstVideo.id);
     }
   }, [videos]);
@@ -44,7 +47,7 @@ function Player() {
   };
 
   const handleVideoSelect = (videoPath: string, videoId: string) => {
-    setSelectedVideo(videoPath);
+    setSelectedVideo(`${getApiUrl()}/videos/${videoPath}`);
     setCurrentVideoId(videoId);
     setIsVideoLoading(true);
   };
@@ -73,7 +76,7 @@ function Player() {
       (currentIndex + 1) % sortedVideos.length;
 
     const newVideo = sortedVideos[newIndex];
-    handleVideoSelect(`${API_URL}/videos/${newVideo.path}`, newVideo.id);
+    handleVideoSelect(newVideo.path, newVideo.id);
   };
 
   const handleSortModelChange = (newSortModel: GridSortModel) => {
