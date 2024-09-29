@@ -9,7 +9,7 @@ import inquirer from 'inquirer';
       type: 'input',
       name: 'path',
       message: 'Enter the path for the backend:',
-      default: '/home/tadeas/xxx/evalovia', // Provide a default path.
+      default: '/home/tadeas/xxx',
     }
   ]);
 
