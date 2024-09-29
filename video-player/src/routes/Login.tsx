@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TextField, Button, Box, Typography, Alert, CircularProgress } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
 
 // Hardcoded credentials
 const VALID_USERNAME = 'admin';
@@ -12,6 +13,7 @@ function Login() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleLogin = () => {
     setErrorMessage('');
@@ -19,6 +21,7 @@ function Login() {
       setIsLoading(true);
       console.log('Login successful');
       setTimeout(() => {
+        login();
         navigate('/player');
       }, 1000); // Simulate a delay before navigation
     } else {

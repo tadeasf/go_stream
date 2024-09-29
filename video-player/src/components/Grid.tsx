@@ -17,10 +17,10 @@ interface GridProps {
   videos: Video[];
   onVideoSelect: (videoPath: string, videoId: string) => void;
   currentVideoId: string | null;
+  onSortModelChange: (model: GridSortModel) => void;
 }
 
-function Grid({ videos, onVideoSelect, currentVideoId }: GridProps) {
-  const [sortModel, setSortModel] = useState<GridSortModel>([]);
+function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: GridProps) {
   const [rows, setRows] = useState<Video[]>([]);
   const queryClient = useQueryClient();
 
@@ -74,10 +74,6 @@ function Grid({ videos, onVideoSelect, currentVideoId }: GridProps) {
     },
   ];
 
-  const handleSortModelChange = (newSortModel: GridSortModel) => {
-    setSortModel(newSortModel);
-  };
-
   return (
     <DataGrid
       rows={rows}
@@ -87,11 +83,10 @@ function Grid({ videos, onVideoSelect, currentVideoId }: GridProps) {
           paginationModel: { pageSize: 5, page: 0 },
         },
       }}
-      pageSizeOptions={[5, 10, 25]}
+      pageSizeOptions={[5, 10, 25, 50, 100, 250]}
       onRowClick={(params: GridRowParams) => onVideoSelect(`${API_URL}/videos/${params.row.path}`, params.row.id)}
       autoHeight
-      sortModel={sortModel}
-      onSortModelChange={handleSortModelChange}
+      onSortModelChange={onSortModelChange}
       getRowClassName={(params) => params.id === currentVideoId ? 'Mui-selected' : ''}
     />
   );
