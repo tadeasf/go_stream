@@ -78,16 +78,20 @@ func serveAction(cmd *cobra.Command, args []string) error {
 	// Find videos concurrently
 	videos := findVideosConcurrent(dir, recursive)
 	ip := getOutboundIP()
-	playlist := generatePlaylist(videos, ip, port)
 	var handler http.Handler = http.DefaultServeMux
 
+	var username, password string
 	if useAuth {
 		config, err := loadConfig()
 		if err != nil {
 			return fmt.Errorf("failed to load authentication config: %s", err)
 		}
-		handler = basicAuth(handler, config.Username, config.Password)
+		username = config.Username
+		password = config.Password
+		handler = BasicAuth(handler, username, password)
 	}
+
+	playlist := generatePlaylist(videos, ip, port, useAuth, username, password)
 
 	http.HandleFunc("/playlist.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -197,12 +201,16 @@ func findVideosConcurrent(root string, recursive bool) []string {
 	return videos
 }
 
-func generatePlaylist(videos []string, ip net.IP, port int) string {
+func generatePlaylist(videos []string, ip net.IP, port int, useAuth bool, username, password string) string {
 	var sb strings.Builder
 	sb.WriteString("#EXTM3U\n")
 	for _, video := range videos {
 		sb.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", video))
-		sb.WriteString(fmt.Sprintf("http://%s:%d/videos/%s\n", ip, port, video))
+		if useAuth {
+			sb.WriteString(fmt.Sprintf("http://%s:%s@%s:%d/videos/%s\n", username, password, ip, port, video))
+		} else {
+			sb.WriteString(fmt.Sprintf("http://%s:%d/videos/%s\n", ip, port, video))
+		}
 	}
 	return sb.String()
 }

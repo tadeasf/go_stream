@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,15 +37,26 @@ var (
 func basicAuthAction(cmd *cobra.Command, args []string) error {
 	fmt.Println(cyan("Setting up basic authentication"))
 
-	username := prompt.Input("Enter username: ", nil)
-	password := prompt.Input("Enter password: ", nil)
+	fmt.Print("Enter username: ")
+	username, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to read username: %w", err)
+	}
+	fmt.Println() // Print a newline after the username input
+
+	fmt.Print("Enter password: ")
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to read password: %w", err)
+	}
+	fmt.Println() // Print a newline after the password input
 
 	config := Config{
-		Username: username,
-		Password: password,
+		Username: string(username),
+		Password: string(password),
 	}
 
-	err := os.MkdirAll(configDir, 0755)
+	err = os.MkdirAll(configDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -79,7 +90,8 @@ func loadConfig() (*Config, error) {
 	return &config, nil
 }
 
-func basicAuth(next http.Handler, username, password string) http.Handler {
+// BasicAuth wraps an http.Handler with basic authentication
+func BasicAuth(next http.Handler, username, password string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != username || pass != password {
