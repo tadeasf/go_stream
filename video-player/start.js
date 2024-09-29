@@ -22,7 +22,7 @@ import inquirer from 'inquirer';
   // Function to check if the backend is ready
   const checkBackend = async () => {
     try {
-      await axios.get('http://localhost:8069/api/v1/playlist/list');
+      await axios.get('http://185.187.169.230:8069/api/v1/playlist/list');
       console.log('Backend is ready. Starting frontend...');
       
       // Start the frontend

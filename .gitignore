@@ -27,3 +27,4 @@ video-player/*.njsproj
 video-player/*.sln
 video-player/*.sw?
 video-player/.env
+node_modules
