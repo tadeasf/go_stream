@@ -4,7 +4,6 @@ go 1.23.1
 
 require (
 	github.com/c-bata/go-prompt v0.2.6
-	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/eiannone/keyboard v0.0.0-20220611211555-0d226195f203
 	github.com/fatih/color v1.17.0
 	github.com/gorilla/mux v1.8.1

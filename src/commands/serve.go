@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,7 +18,6 @@ import (
 	"bufio"
 
 	"github.com/c-bata/go-prompt"
-	"github.com/dhowden/tag"
 	"github.com/eiannone/keyboard"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
@@ -42,13 +40,12 @@ func init() {
 	ServeCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Search for videos recursively")
 	ServeCmd.Flags().IntVarP(&port, "port", "p", 8069, "Port to serve on")
 	ServeCmd.Flags().BoolVar(&useAuth, "auth", false, "Enable basic authentication")
-	ServeCmd.Flags().StringVar(&sortBy, "sort", "", "Sort videos by: name, size, or duration")
+	ServeCmd.Flags().StringVar(&sortBy, "sort", "", "Sort videos by: name or size")
 }
 
 type Video struct {
-	Path     string
-	Size     int64
-	Duration time.Duration
+	Path string
+	Size int64
 }
 
 func serveAction(cmd *cobra.Command, args []string) error {
@@ -100,16 +97,12 @@ func serveAction(cmd *cobra.Command, args []string) error {
 		sort.Slice(videos, func(i, j int) bool {
 			return videos[i].Size > videos[j].Size // Sort descending
 		})
-	case "duration":
-		sort.Slice(videos, func(i, j int) bool {
-			return videos[i].Duration > videos[j].Duration // Sort descending
-		})
 	}
 
 	// Debug print
 	fmt.Println("Sorted videos:")
 	for _, v := range videos {
-		fmt.Printf("Path: %s, Size: %d, Duration: %v\n", v.Path, v.Size, v.Duration)
+		fmt.Printf("Path: %s, Size: %d\n", v.Path, v.Size)
 	}
 
 	ip := GetOutboundIP()
@@ -219,7 +212,6 @@ func FindVideosConcurrent(root string, recursive bool) []Video {
 						Path: relPath,
 						Size: info.Size(),
 					}
-					video.Duration = getVideoDuration(path)
 					videosCh <- video
 					break
 				}
@@ -241,47 +233,11 @@ func FindVideosConcurrent(root string, recursive bool) []Video {
 	return videos
 }
 
-func getVideoDuration(path string) time.Duration {
-	file, err := os.Open(path)
-	if err != nil {
-		fmt.Printf("Error opening file %s: %v\n", path, err)
-		return 0
-	}
-	defer file.Close()
-
-	m, err := tag.ReadFrom(file)
-	if err != nil {
-		fmt.Printf("Error reading tags from file %s: %v\n", path, err)
-		return 0
-	}
-
-	rawData := m.Raw()
-	durationInterface, ok := rawData["duration"]
-	if !ok {
-		fmt.Printf("No duration found for file %s\n", path)
-		return 0
-	}
-
-	durationStr, ok := durationInterface.(string)
-	if !ok {
-		fmt.Printf("Duration is not a string for file %s\n", path)
-		return 0
-	}
-
-	durationFloat, err := strconv.ParseFloat(durationStr, 64)
-	if err != nil {
-		fmt.Printf("Error parsing duration for file %s: %v\n", path, err)
-		return 0
-	}
-
-	return time.Duration(durationFloat * float64(time.Second))
-}
-
 func generatePlaylist(videos []Video, ip net.IP, port int, useAuth bool, username, password string) string {
 	var sb strings.Builder
 	sb.WriteString("#EXTM3U\n")
 	for _, video := range videos {
-		sb.WriteString(fmt.Sprintf("#EXTINF:%.0f,%s\n", video.Duration.Seconds(), video.Path))
+		sb.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", video.Path))
 		if useAuth {
 			sb.WriteString(fmt.Sprintf("http://%s:%s@%s:%d/videos/%s\n", username, password, ip, port, video.Path))
 		} else {

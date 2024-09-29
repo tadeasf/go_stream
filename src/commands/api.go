@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -24,16 +27,25 @@ func init() {
 	ApiCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Search for videos recursively")
 	ApiCmd.Flags().IntVarP(&port, "port", "p", 8069, "Port to serve on")
 	ApiCmd.Flags().BoolVar(&useAuth, "auth", false, "Enable basic authentication")
-	ApiCmd.Flags().StringVar(&sortBy, "sort", "", "Sort videos by: name, size, or duration")
+	ApiCmd.Flags().StringVar(&sortBy, "sort", "", "Sort videos by: name or size")
 	ApiCmd.Flags().StringVarP(&directoryPath, "path", "d", "", "Directory path to search for videos")
 	ApiCmd.MarkFlagRequired("path")
 }
 
 type VideoInfo struct {
-	ID       string  `json:"id"`
-	Path     string  `json:"path"`
-	Size     int64   `json:"size"`
-	Duration float64 `json:"duration"`
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
+type PathRequest struct {
+	Path string `json:"path"`
+	Args string `json:"args"`
+}
+
+type PathSuggestion struct {
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
 }
 
 func apiAction(cmd *cobra.Command, args []string) error {
@@ -67,10 +79,9 @@ func apiAction(cmd *cobra.Command, args []string) error {
 	videoInfos := make([]VideoInfo, len(videos))
 	for i, v := range videos {
 		videoInfos[i] = VideoInfo{
-			ID:       strconv.Itoa(i + 1),
-			Path:     v.Path,
-			Size:     v.Size,
-			Duration: v.Duration.Seconds(),
+			ID:   strconv.Itoa(i + 1),
+			Path: v.Path,
+			Size: v.Size,
 		}
 	}
 
@@ -79,6 +90,35 @@ func apiAction(cmd *cobra.Command, args []string) error {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Write([]byte(playlist))
 	}).Methods("GET")
+
+	router.HandleFunc("/api/v1/playlist", func(w http.ResponseWriter, r *http.Request) {
+		var req PathRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		if err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		newRecursive := strings.Contains(req.Args, "-r")
+		newVideos := FindVideosConcurrent(req.Path, newRecursive)
+		sortVideos(newVideos, sortBy)
+
+		newVideoInfos := make([]VideoInfo, len(newVideos))
+		for i, v := range newVideos {
+			newVideoInfos[i] = VideoInfo{
+				ID:   strconv.Itoa(i + 1),
+				Path: v.Path,
+				Size: v.Size,
+			}
+		}
+
+		videos = newVideos
+		videoInfos = newVideoInfos
+		directoryPath = req.Path
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Path updated successfully"})
+	}).Methods("POST")
 
 	router.HandleFunc("/api/v1/playlist/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -110,14 +150,58 @@ func apiAction(cmd *cobra.Command, args []string) error {
 	// Wrap the router with the CORS handler
 	handler := c.Handler(router)
 
+	// Add path suggestions endpoint
+	router.HandleFunc("/api/v1/path-suggestions", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		suggestions, err := getPathSuggestions(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(suggestions)
+	}).Methods("GET")
+
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf(green("Starting API server at http://%s:%d\n"), ip, port)
 	fmt.Println(yellow("Available endpoints:"))
 	fmt.Printf("  GET /api/v1/playlist\n")
+	fmt.Printf("  POST /api/v1/playlist\n")
 	fmt.Printf("  GET /api/v1/playlist/list\n")
 	fmt.Printf("  GET /api/v1/playlist/{video_id}\n")
+	fmt.Printf("  GET /api/v1/path-suggestions\n")
 
 	return http.ListenAndServe(addr, handler)
+}
+
+func getPathSuggestions(basePath string) ([]PathSuggestion, error) {
+	dir := filepath.Dir(basePath)
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var suggestions []PathSuggestion
+	for _, file := range files {
+		// Skip hidden directories (those starting with a dot)
+		if strings.HasPrefix(file.Name(), ".") {
+			continue
+		}
+
+		// Only include directories
+		if !file.IsDir() {
+			continue
+		}
+
+		fullPath := filepath.Join(dir, file.Name())
+		if strings.HasPrefix(fullPath, basePath) {
+			suggestions = append(suggestions, PathSuggestion{
+				Path:  fullPath,
+				IsDir: true, // This will always be true now
+			})
+		}
+	}
+	return suggestions, nil
 }
 
 func sortVideos(videos []Video, sortBy string) {
@@ -129,10 +213,6 @@ func sortVideos(videos []Video, sortBy string) {
 	case "size":
 		sort.Slice(videos, func(i, j int) bool {
 			return videos[i].Size > videos[j].Size // Sort descending
-		})
-	case "duration":
-		sort.Slice(videos, func(i, j int) bool {
-			return videos[i].Duration > videos[j].Duration // Sort descending
 		})
 	}
 }
