@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -99,25 +101,29 @@ func apiAction(cmd *cobra.Command, args []string) error {
 			return
 		}
 
-		newRecursive := strings.Contains(req.Args, "-r")
-		newVideos := FindVideosConcurrent(req.Path, newRecursive)
-		sortVideos(newVideos, sortBy)
+		// Restart the server with the new path
+		executable, _ := os.Executable()
+		cmd := exec.Command(executable, "api", "--path", req.Path)
+		if strings.Contains(req.Args, "-r") {
+			cmd.Args = append(cmd.Args, "-r")
+		}
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
-		newVideoInfos := make([]VideoInfo, len(newVideos))
-		for i, v := range newVideos {
-			newVideoInfos[i] = VideoInfo{
-				ID:   strconv.Itoa(i + 1),
-				Path: v.Path,
-				Size: v.Size,
-			}
+		err = cmd.Start()
+		if err != nil {
+			http.Error(w, "Failed to restart server", http.StatusInternalServerError)
+			return
 		}
 
-		videos = newVideos
-		videoInfos = newVideoInfos
-		directoryPath = req.Path
+		// Exit the current process
+		go func() {
+			time.Sleep(1 * time.Second)
+			os.Exit(0)
+		}()
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "Path updated successfully"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "Server restarting with new path"})
 	}).Methods("POST")
 
 	router.HandleFunc("/api/v1/playlist/list", func(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +132,32 @@ func apiAction(cmd *cobra.Command, args []string) error {
 	}).Methods("GET")
 
 	router.HandleFunc("/api/v1/playlist/{video_id}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			vars := mux.Vars(r)
+			id, err := strconv.Atoi(vars["video_id"])
+			if err != nil || id < 1 || id > len(videos) {
+				http.Error(w, "Invalid video ID", http.StatusBadRequest)
+				return
+			}
+
+			// Remove the video from the slice
+			videos = append(videos[:id-1], videos[id:]...)
+
+			// Update videoInfos
+			videoInfos = make([]VideoInfo, len(videos))
+			for i, v := range videos {
+				videoInfos[i] = VideoInfo{
+					ID:   strconv.Itoa(i + 1),
+					Path: v.Path,
+					Size: v.Size,
+				}
+			}
+
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Video deleted successfully"})
+			return
+		}
+
 		vars := mux.Vars(r)
 		id, err := strconv.Atoi(vars["video_id"])
 		if err != nil || id < 1 || id > len(videos) {
@@ -136,14 +168,14 @@ func apiAction(cmd *cobra.Command, args []string) error {
 		streamURL := fmt.Sprintf("http://%s:%d/videos/%s", ip, port, video.Path)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"url": streamURL})
-	}).Methods("GET")
+	}).Methods("GET", "DELETE")
 
 	router.PathPrefix("/videos/").Handler(http.StripPrefix("/videos/", http.FileServer(http.Dir(directoryPath))))
 
 	// Create a new CORS handler
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "OPTIONS", "DELETE"},
 		AllowedHeaders: []string{"*"},
 	})
 

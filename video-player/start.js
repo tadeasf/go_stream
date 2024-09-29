@@ -24,10 +24,19 @@ import inquirer from 'inquirer';
     try {
       await axios.get('http://localhost:8069/api/v1/playlist/list');
       console.log('Backend is ready. Starting frontend...');
+      
       // Start the frontend
       const frontend = spawn('npm', ['run', 'start:frontend'], {
         stdio: 'inherit'
       });
+
+      // Handle frontend process termination
+      frontend.on('close', (code) => {
+        console.log(`Frontend process exited with code ${code}`);
+        backend.kill();
+        process.exit();
+      });
+
     } catch (error) {
       console.log('Backend not ready yet. Retrying in 1 second...');
       setTimeout(checkBackend, 1000);

@@ -26,3 +26,4 @@ video-player/*.ntvs*
 video-player/*.njsproj
 video-player/*.sln
 video-player/*.sw?
+video-player/.env

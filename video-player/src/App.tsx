@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { DataGrid, GridColDef, GridPaginationModel, GridRenderCellParams } from '@mui/x-data-grid';
 import ReactPlayer from 'react-player';
-import { Container, Typography, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete } from '@mui/material';
+import { Container, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { DEFAULT_USERNAME, DEFAULT_PASSWORD } from './config';
 
 interface Video {
   id: string;
@@ -27,17 +29,6 @@ const formatSize = (sizeInBytes: number): string => {
   }
 };
 
-const columns: GridColDef[] = [
-  { field: 'id', headerName: 'ID', width: 70 },
-  { field: 'path', headerName: 'Name', width: 500 },
-  { 
-    field: 'size', 
-    headerName: 'Size', 
-    width: 150,
-    renderCell: (params: GridRenderCellParams) => formatSize(params.row.size),
-  },
-];
-
 function App() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
@@ -48,6 +39,10 @@ function App() {
   const [newPath, setNewPath] = useState('');
   const [isRecursive, setIsRecursive] = useState(false);
   const [pathSuggestions, setPathSuggestions] = useState<PathSuggestion[]>([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showLoginDialog, setShowLoginDialog] = useState(true);
 
   useEffect(() => {
     fetchVideos();
@@ -74,8 +69,11 @@ function App() {
       args: isRecursive ? '-r' : ''
     })
     .then(() => {
-      fetchVideos();
-      setNewPath('');
+      // Wait for the server to restart
+      setTimeout(() => {
+        fetchVideos();
+        setNewPath('');
+      }, 2000);
     })
     .catch(error => console.error('Error changing path:', error));
   };
@@ -93,6 +91,74 @@ function App() {
       })
       .catch(error => console.error('Error fetching path suggestions:', error));
   };
+
+  const handleDeleteVideo = (id: string) => {
+    axios.delete(`${API_URL}/api/v1/playlist/${id}`)
+      .then(() => {
+        fetchVideos();
+      })
+      .catch(error => console.error('Error deleting video:', error));
+  };
+
+  const handleLogin = () => {
+    if (username === DEFAULT_USERNAME && password === DEFAULT_PASSWORD) {
+      setIsLoggedIn(true);
+      setShowLoginDialog(false);
+    } else {
+      alert('Invalid credentials');
+    }
+  };
+
+  const columns: GridColDef[] = [
+    { field: 'id', headerName: 'ID', width: 70 },
+    { field: 'path', headerName: 'Name', width: 500 },
+    { 
+      field: 'size', 
+      headerName: 'Size', 
+      width: 150,
+      renderCell: (params: GridRenderCellParams) => formatSize(params.row.size),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 100,
+      renderCell: (params: GridRenderCellParams) => (
+        <IconButton onClick={() => handleDeleteVideo(params.row.id)}>
+          <DeleteIcon />
+        </IconButton>
+      ),
+    },
+  ];
+
+  if (!isLoggedIn) {
+    return (
+      <Dialog open={showLoginDialog} onClose={() => {}}>
+        <DialogTitle>Login</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Username"
+            type="text"
+            fullWidth
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <TextField
+            margin="dense"
+            label="Password"
+            type="password"
+            fullWidth
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleLogin}>Login</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
 
   return (
     <Container maxWidth={false}>
@@ -122,7 +188,7 @@ function App() {
           freeSolo
           options={pathSuggestions}
           getOptionLabel={(option) => typeof option === 'string' ? option : option.path}
-          renderOption={(props, option, state) => {
+          renderOption={(props, option) => {
             return (
               <li {...props} key={option.path}>
                 {option.path}
