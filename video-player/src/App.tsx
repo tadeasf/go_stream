@@ -5,6 +5,7 @@ import ReactPlayer from 'react-player';
 import { Container, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
 import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import LoopIcon from '@mui/icons-material/Loop';
@@ -52,6 +53,7 @@ function App() {
     { field: 'id', sort: 'asc' },
   ]);
   const [isLooping, setIsLooping] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const playerRef = useRef<ReactPlayer>(null);
 
   useEffect(() => {
@@ -170,6 +172,10 @@ function App() {
     setIsLooping(!isLooping);
   };
 
+  const handlePlayPause = () => {
+    setIsPlaying(!isPlaying);
+  };
+
   const getCurrentVideoId = () => {
     return videos[currentVideoIndex]?.id || '';
   };
@@ -236,8 +242,10 @@ function App() {
             width="100%" 
             height="100%"
             style={{ backgroundColor: '#000' }}
-            playing
+            playing={isPlaying}
             loop={isLooping}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
           />
         )}
       </Box>
@@ -253,11 +261,11 @@ function App() {
         </Button>
         <Button
           variant="contained"
-          startIcon={<PlayArrowIcon />}
-          onClick={() => playerRef.current?.seekTo(0)}
+          startIcon={isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+          onClick={handlePlayPause}
           sx={{ mr: 2 }}
         >
-          Replay
+          {isPlaying ? 'Pause' : 'Play'}
         </Button>
         <Button
           variant="contained"
