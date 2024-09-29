@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { DataGrid, GridColDef, GridPaginationModel, GridRenderCellParams } from '@mui/x-data-grid';
 import ReactPlayer from 'react-player';
 import { Container, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { DEFAULT_USERNAME, DEFAULT_PASSWORD } from './config';
 
 interface Video {
@@ -43,6 +46,8 @@ function App() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showLoginDialog, setShowLoginDialog] = useState(true);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const playerRef = useRef<ReactPlayer>(null);
 
   useEffect(() => {
     fetchVideos();
@@ -60,6 +65,8 @@ function App() {
   };
 
   const handleRowClick = (params: any) => {
+    const index = videos.findIndex(video => video.id === params.row.id);
+    setCurrentVideoIndex(index);
     setSelectedVideo(`${API_URL}/videos/${params.row.path}`);
   };
 
@@ -106,6 +113,22 @@ function App() {
       setShowLoginDialog(false);
     } else {
       alert('Invalid credentials');
+    }
+  };
+
+  const handlePreviousVideo = () => {
+    if (currentVideoIndex > 0) {
+      const newIndex = currentVideoIndex - 1;
+      setCurrentVideoIndex(newIndex);
+      setSelectedVideo(`${API_URL}/videos/${videos[newIndex].path}`);
+    }
+  };
+
+  const handleNextVideo = () => {
+    if (currentVideoIndex < videos.length - 1) {
+      const newIndex = currentVideoIndex + 1;
+      setCurrentVideoIndex(newIndex);
+      setSelectedVideo(`${API_URL}/videos/${videos[newIndex].path}`);
     }
   };
 
@@ -165,13 +188,42 @@ function App() {
       <Box sx={{ width: '100%', aspectRatio: '16/9', maxHeight: 'calc(100vh - 300px)' }}>
         {selectedVideo && (
           <ReactPlayer 
+            ref={playerRef}
             url={selectedVideo} 
             controls 
             width="100%" 
             height="100%"
             style={{ backgroundColor: '#000' }}
+            playing
           />
         )}
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
+        <Button
+          variant="contained"
+          startIcon={<SkipPreviousIcon />}
+          onClick={handlePreviousVideo}
+          disabled={currentVideoIndex === 0}
+          sx={{ mr: 2 }}
+        >
+          Previous
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<PlayArrowIcon />}
+          onClick={() => playerRef.current?.seekTo(0)}
+        >
+          Replay
+        </Button>
+        <Button
+          variant="contained"
+          endIcon={<SkipNextIcon />}
+          onClick={handleNextVideo}
+          disabled={currentVideoIndex === videos.length - 1}
+          sx={{ ml: 2 }}
+        >
+          Next
+        </Button>
       </Box>
       <Box sx={{ height: 400, width: '100%', mt: 2 }}>
         <DataGrid
@@ -181,6 +233,11 @@ function App() {
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[5, 10, 25]}
           onRowClick={handleRowClick}
+          initialState={{
+            sorting: {
+              sortModel: [{ field: 'id', sort: 'asc' }],
+            },
+          }}
         />
       </Box>
       <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
