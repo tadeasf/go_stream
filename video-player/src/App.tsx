@@ -96,9 +96,6 @@ function App() {
 
   return (
     <Container maxWidth={false}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Video Player
-      </Typography>
       <Box sx={{ width: '100%', aspectRatio: '16/9', maxHeight: 'calc(100vh - 300px)' }}>
         {selectedVideo && (
           <ReactPlayer 
