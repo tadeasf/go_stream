@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { DataGrid, GridColDef, GridPaginationModel, GridRenderCellParams } from '@mui/x-data-grid';
+import { DataGrid, GridColDef, GridPaginationModel, GridRenderCellParams, GridSortModel } from '@mui/x-data-grid';
 import ReactPlayer from 'react-player';
-import { Container, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Container, Box, TextField, Checkbox, FormControlLabel, Button, Autocomplete, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
+import LoopIcon from '@mui/icons-material/Loop';
 import { DEFAULT_USERNAME, DEFAULT_PASSWORD } from './config';
 
 interface Video {
@@ -47,6 +48,10 @@ function App() {
   const [password, setPassword] = useState('');
   const [showLoginDialog, setShowLoginDialog] = useState(true);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [sortModel, setSortModel] = useState<GridSortModel>([
+    { field: 'id', sort: 'asc' },
+  ]);
+  const [isLooping, setIsLooping] = useState(false);
   const playerRef = useRef<ReactPlayer>(null);
 
   useEffect(() => {
@@ -62,6 +67,51 @@ function App() {
         }
       })
       .catch(error => console.error('Error fetching videos:', error));
+  };
+
+  const getSortedVideos = () => {
+    return [...videos].sort((a, b) => {
+      const { field, sort } = sortModel[0];
+      let compareResult: number;
+
+      switch (field) {
+        case 'id':
+          compareResult = a.id.localeCompare(b.id);
+          break;
+        case 'path':
+          compareResult = a.path.localeCompare(b.path);
+          break;
+        case 'size':
+          compareResult = a.size - b.size;
+          break;
+        default:
+          compareResult = 0;
+      }
+
+      return sort === 'asc' ? compareResult : -compareResult;
+    });
+  };
+
+  const handlePreviousVideo = () => {
+    const sortedVideos = getSortedVideos();
+    const currentIndex = sortedVideos.findIndex(v => v.id === videos[currentVideoIndex].id);
+    if (currentIndex > 0) {
+      const previousVideo = sortedVideos[currentIndex - 1];
+      const newIndex = videos.findIndex(v => v.id === previousVideo.id);
+      setCurrentVideoIndex(newIndex);
+      setSelectedVideo(`${API_URL}/videos/${previousVideo.path}`);
+    }
+  };
+
+  const handleNextVideo = () => {
+    const sortedVideos = getSortedVideos();
+    const currentIndex = sortedVideos.findIndex(v => v.id === videos[currentVideoIndex].id);
+    if (currentIndex < sortedVideos.length - 1) {
+      const nextVideo = sortedVideos[currentIndex + 1];
+      const newIndex = videos.findIndex(v => v.id === nextVideo.id);
+      setCurrentVideoIndex(newIndex);
+      setSelectedVideo(`${API_URL}/videos/${nextVideo.path}`);
+    }
   };
 
   const handleRowClick = (params: any) => {
@@ -116,20 +166,12 @@ function App() {
     }
   };
 
-  const handlePreviousVideo = () => {
-    if (currentVideoIndex > 0) {
-      const newIndex = currentVideoIndex - 1;
-      setCurrentVideoIndex(newIndex);
-      setSelectedVideo(`${API_URL}/videos/${videos[newIndex].path}`);
-    }
+  const handleLoopToggle = () => {
+    setIsLooping(!isLooping);
   };
 
-  const handleNextVideo = () => {
-    if (currentVideoIndex < videos.length - 1) {
-      const newIndex = currentVideoIndex + 1;
-      setCurrentVideoIndex(newIndex);
-      setSelectedVideo(`${API_URL}/videos/${videos[newIndex].path}`);
-    }
+  const getCurrentVideoId = () => {
+    return videos[currentVideoIndex]?.id || '';
   };
 
   const columns: GridColDef[] = [
@@ -195,10 +237,11 @@ function App() {
             height="100%"
             style={{ backgroundColor: '#000' }}
             playing
+            loop={isLooping}
           />
         )}
       </Box>
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2, mb: 2 }}>
         <Button
           variant="contained"
           startIcon={<SkipPreviousIcon />}
@@ -212,6 +255,7 @@ function App() {
           variant="contained"
           startIcon={<PlayArrowIcon />}
           onClick={() => playerRef.current?.seekTo(0)}
+          sx={{ mr: 2 }}
         >
           Replay
         </Button>
@@ -220,10 +264,22 @@ function App() {
           endIcon={<SkipNextIcon />}
           onClick={handleNextVideo}
           disabled={currentVideoIndex === videos.length - 1}
-          sx={{ ml: 2 }}
+          sx={{ mr: 2 }}
         >
           Next
         </Button>
+        <Button
+          variant="contained"
+          startIcon={<LoopIcon />}
+          onClick={handleLoopToggle}
+          color={isLooping ? "secondary" : "primary"}
+          sx={{ mr: 2 }}
+        >
+          Loop: {isLooping ? "On" : "Off"}
+        </Button>
+        <Typography variant="body1" sx={{ ml: 2 }}>
+          Current Video ID: {getCurrentVideoId()}
+        </Typography>
       </Box>
       <Box sx={{ height: 400, width: '100%', mt: 2 }}>
         <DataGrid
@@ -233,11 +289,8 @@ function App() {
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[5, 10, 25]}
           onRowClick={handleRowClick}
-          initialState={{
-            sorting: {
-              sortModel: [{ field: 'id', sort: 'asc' }],
-            },
-          }}
+          sortModel={sortModel}
+          onSortModelChange={(model) => setSortModel(model)}
         />
       </Box>
       <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
