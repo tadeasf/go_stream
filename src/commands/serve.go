@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -17,6 +19,7 @@ import (
 	"bufio"
 
 	"github.com/c-bata/go-prompt"
+	"github.com/dhowden/tag"
 	"github.com/eiannone/keyboard"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
@@ -26,6 +29,7 @@ var (
 	recursive bool
 	port      int
 	useAuth   bool
+	sortBy    string
 )
 
 var ServeCmd = &cobra.Command{
@@ -38,12 +42,20 @@ func init() {
 	ServeCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Search for videos recursively")
 	ServeCmd.Flags().IntVarP(&port, "port", "p", 8069, "Port to serve on")
 	ServeCmd.Flags().BoolVar(&useAuth, "auth", false, "Enable basic authentication")
+	ServeCmd.Flags().StringVar(&sortBy, "sort", "", "Sort videos by: name, size, or duration")
+}
+
+type Video struct {
+	Path     string
+	Size     int64
+	Duration time.Duration
 }
 
 func serveAction(cmd *cobra.Command, args []string) error {
 	recursive, _ := cmd.Flags().GetBool("recursive")
 	port, _ := cmd.Flags().GetInt("port")
 	useAuth, _ := cmd.Flags().GetBool("auth")
+	sortBy, _ := cmd.Flags().GetString("sort")
 
 	// Channel to signal server stop
 	stop := make(chan struct{})
@@ -76,8 +88,31 @@ func serveAction(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find videos concurrently
-	videos := findVideosConcurrent(dir, recursive)
-	ip := getOutboundIP()
+	videos := FindVideosConcurrent(dir, recursive)
+
+	// Sort videos based on the sortBy flag
+	switch sortBy {
+	case "name":
+		sort.Slice(videos, func(i, j int) bool {
+			return videos[i].Path > videos[j].Path // Sort descending
+		})
+	case "size":
+		sort.Slice(videos, func(i, j int) bool {
+			return videos[i].Size > videos[j].Size // Sort descending
+		})
+	case "duration":
+		sort.Slice(videos, func(i, j int) bool {
+			return videos[i].Duration > videos[j].Duration // Sort descending
+		})
+	}
+
+	// Debug print
+	fmt.Println("Sorted videos:")
+	for _, v := range videos {
+		fmt.Printf("Path: %s, Size: %d, Duration: %v\n", v.Path, v.Size, v.Duration)
+	}
+
+	ip := GetOutboundIP()
 	var handler http.Handler = http.DefaultServeMux
 
 	var username, password string
@@ -162,10 +197,10 @@ func serveAction(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func findVideosConcurrent(root string, recursive bool) []string {
+func FindVideosConcurrent(root string, recursive bool) []Video {
 	var wg sync.WaitGroup
 	videoExtensions := []string{".mp4", ".avi", ".mov", ".mkv", ".webm"}
-	videosCh := make(chan string)
+	videosCh := make(chan Video)
 
 	wg.Add(1)
 	go func() {
@@ -180,7 +215,12 @@ func findVideosConcurrent(root string, recursive bool) []string {
 			for _, ext := range videoExtensions {
 				if strings.HasSuffix(strings.ToLower(path), ext) {
 					relPath, _ := filepath.Rel(root, path)
-					videosCh <- relPath
+					video := Video{
+						Path: relPath,
+						Size: info.Size(),
+					}
+					video.Duration = getVideoDuration(path)
+					videosCh <- video
 					break
 				}
 			}
@@ -193,7 +233,7 @@ func findVideosConcurrent(root string, recursive bool) []string {
 		close(videosCh)
 	}()
 
-	var videos []string
+	var videos []Video
 	for video := range videosCh {
 		videos = append(videos, video)
 	}
@@ -201,21 +241,57 @@ func findVideosConcurrent(root string, recursive bool) []string {
 	return videos
 }
 
-func generatePlaylist(videos []string, ip net.IP, port int, useAuth bool, username, password string) string {
+func getVideoDuration(path string) time.Duration {
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Printf("Error opening file %s: %v\n", path, err)
+		return 0
+	}
+	defer file.Close()
+
+	m, err := tag.ReadFrom(file)
+	if err != nil {
+		fmt.Printf("Error reading tags from file %s: %v\n", path, err)
+		return 0
+	}
+
+	rawData := m.Raw()
+	durationInterface, ok := rawData["duration"]
+	if !ok {
+		fmt.Printf("No duration found for file %s\n", path)
+		return 0
+	}
+
+	durationStr, ok := durationInterface.(string)
+	if !ok {
+		fmt.Printf("Duration is not a string for file %s\n", path)
+		return 0
+	}
+
+	durationFloat, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		fmt.Printf("Error parsing duration for file %s: %v\n", path, err)
+		return 0
+	}
+
+	return time.Duration(durationFloat * float64(time.Second))
+}
+
+func generatePlaylist(videos []Video, ip net.IP, port int, useAuth bool, username, password string) string {
 	var sb strings.Builder
 	sb.WriteString("#EXTM3U\n")
 	for _, video := range videos {
-		sb.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", video))
+		sb.WriteString(fmt.Sprintf("#EXTINF:%.0f,%s\n", video.Duration.Seconds(), video.Path))
 		if useAuth {
-			sb.WriteString(fmt.Sprintf("http://%s:%s@%s:%d/videos/%s\n", username, password, ip, port, video))
+			sb.WriteString(fmt.Sprintf("http://%s:%s@%s:%d/videos/%s\n", username, password, ip, port, video.Path))
 		} else {
-			sb.WriteString(fmt.Sprintf("http://%s:%d/videos/%s\n", ip, port, video))
+			sb.WriteString(fmt.Sprintf("http://%s:%d/videos/%s\n", ip, port, video.Path))
 		}
 	}
 	return sb.String()
 }
 
-func getOutboundIP() net.IP {
+func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
 		log.Fatal(err)

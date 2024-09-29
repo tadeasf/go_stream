@@ -25,4 +25,5 @@ func main() {
 func init() {
 	rootCmd.AddCommand(commands.ServeCmd)
 	rootCmd.AddCommand(commands.BasicAuthCmd)
+	rootCmd.AddCommand(commands.ApiCmd)
 }
