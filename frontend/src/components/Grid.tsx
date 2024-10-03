@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
 import { DataGrid, GridColDef, GridRowParams, GridSortModel, GridRenderCellParams } from '@mui/x-data-grid';
-import { IconButton } from '@mui/material';
+import { IconButton, Checkbox } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient, useQuery } from 'react-query';
 import axios from 'axios';
-import { Checkbox } from '@mui/material';
 
 // Replace the hardcoded API_URL with a function to get the base URL
 const getApiUrl = () => {
@@ -26,19 +24,19 @@ interface GridProps {
 }
 
 function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange, showCheckbox = false }: GridProps) {
-  const [rows, setRows] = useState<Video[]>([]);
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    console.log('Videos prop:', videos);
-    setRows(videos);
-  }, [videos]);
+  const { refetch } = useQuery<Video[]>('videos', async () => {
+    const response = await axios.get(`${getApiUrl()}/api/v1/playlist/list`);
+    return response.data;
+  });
 
   const deleteMutation = useMutation(
     (id: string) => axios.delete(`${getApiUrl()}/api/v1/playlist/${id}`),
     {
       onSuccess: () => {
         queryClient.invalidateQueries('videos');
+        refetch();
       },
     }
   );
@@ -91,7 +89,7 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange, showCh
 
   return (
     <DataGrid
-      rows={rows}
+      rows={videos}
       columns={columns}
       initialState={{
         pagination: {

@@ -1,10 +1,28 @@
 import React, { useState } from 'react';
-import { Button, Container } from '@mui/material';
+import { Button, Container, CircularProgress } from '@mui/material';
 import Grid from './Grid';
 import axios from 'axios';
+import { useQuery } from 'react-query';
+import { GridSortModel } from '@mui/x-data-grid';
+
+// Add this function to get the API URL
+const getApiUrl = () => {
+  return `${window.location.protocol}//${window.location.hostname}:8069`;
+};
+
+interface Video {
+  id: string;
+  path: string;
+  size: number;
+}
 
 const PlaylistMaker: React.FC = () => {
   const [selectedVideos, setSelectedVideos] = useState<string[]>([]);
+
+  const { data: videos, isLoading, error } = useQuery<Video[]>('videos', async () => {
+    const response = await axios.get(`${getApiUrl()}/api/v1/playlist/list`);
+    return response.data;
+  });
 
   const handleVideoSelect = (_videoPath: string, videoId: string, isSelected: boolean) => {
     if (isSelected) {
@@ -14,9 +32,14 @@ const PlaylistMaker: React.FC = () => {
     }
   };
 
+  const handleSortModelChange = (newSortModel: GridSortModel) => {
+    // If you want to implement sorting logic in the future, you can do it here
+    console.log('Sort model changed:', newSortModel);
+  };
+
   const generatePlaylist = async () => {
     try {
-      const response = await axios.post('/api/v1/generate-playlist', { videoIds: selectedVideos }, { responseType: 'blob' });
+      const response = await axios.post(`${getApiUrl()}/api/v1/generate-playlist`, { videoIds: selectedVideos }, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -29,13 +52,16 @@ const PlaylistMaker: React.FC = () => {
     }
   };
 
+  if (isLoading) return <CircularProgress />;
+  if (error) return <div>An error occurred: {(error as Error).message}</div>;
+
   return (
     <Container>
       <Grid 
-        videos={[]} // You need to provide the videos prop
+        videos={videos || []}
         onVideoSelect={handleVideoSelect}
         currentVideoId={null}
-        onSortModelChange={() => {}} // Add an empty function or implement sorting logic
+        onSortModelChange={handleSortModelChange}
         showCheckbox={true}
       />
       <Button variant="contained" color="primary" onClick={generatePlaylist} style={{ marginTop: '20px' }}>
