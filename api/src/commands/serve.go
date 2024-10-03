@@ -119,7 +119,7 @@ func serveAction(cmd *cobra.Command, args []string) error {
 		handler = BasicAuth(handler, username, password)
 	}
 
-	playlist := generatePlaylist(videos, ip, port, useAuth, username, password)
+	playlist := generatePlaylistServe(videos, ip, port, useAuth, username, password)
 
 	http.HandleFunc("/playlist.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -233,7 +233,7 @@ func FindVideosConcurrent(root string, recursive bool) []Video {
 	return videos
 }
 
-func generatePlaylist(videos []Video, ip net.IP, port int, useAuth bool, username, password string) string {
+func generatePlaylistServe(videos []Video, ip net.IP, port int, useAuth bool, username, password string) string {
 	var sb strings.Builder
 	sb.WriteString("#EXTM3U\n")
 	for _, video := range videos {

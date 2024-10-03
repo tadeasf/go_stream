@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -278,4 +279,19 @@ func sortVideos(videos []Video, sortBy string) {
 			return videos[i].Size > videos[j].Size // Sort descending
 		})
 	}
+}
+
+// Add this function if it's not already present in api.go
+func generatePlaylist(videos []Video, ip net.IP, port int, useAuth bool, username, password string) string {
+	var sb strings.Builder
+	sb.WriteString("#EXTM3U\n")
+	for _, video := range videos {
+		sb.WriteString(fmt.Sprintf("#EXTINF:-1,%s\n", video.Path))
+		if useAuth {
+			sb.WriteString(fmt.Sprintf("http://%s:%s@%s:%d/videos/%s\n", username, password, ip, port, video.Path))
+		} else {
+			sb.WriteString(fmt.Sprintf("http://%s:%d/videos/%s\n", ip, port, video.Path))
+		}
+	}
+	return sb.String()
 }
