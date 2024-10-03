@@ -140,6 +140,13 @@ func apiAction(cmd *cobra.Command, args []string) error {
 				return
 			}
 
+			// Delete the video file from disk
+			videoPath := filepath.Join(directoryPath, videos[id-1].Path)
+			if err := os.Remove(videoPath); err != nil {
+				http.Error(w, "Failed to delete video file", http.StatusInternalServerError)
+				return
+			}
+
 			// Remove the video from the slice
 			videos = append(videos[:id-1], videos[id:]...)
 
@@ -194,6 +201,29 @@ func apiAction(cmd *cobra.Command, args []string) error {
 		json.NewEncoder(w).Encode(suggestions)
 	}).Methods("GET")
 
+	router.HandleFunc("/api/v1/generate-playlist", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			VideoIds []string `json:"videoIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		selectedVideos := make([]Video, 0)
+		for _, id := range req.VideoIds {
+			index, _ := strconv.Atoi(id)
+			if index > 0 && index <= len(videos) {
+				selectedVideos = append(selectedVideos, videos[index-1])
+			}
+		}
+
+		playlist := generatePlaylist(selectedVideos, ip, port, useAuth, "", "")
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Content-Disposition", "attachment; filename=playlist.m3u8")
+		w.Write([]byte(playlist))
+	}).Methods("POST")
+
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf(green("Starting API server at http://%s:%d\n"), ip, port)
 	fmt.Println(yellow("Available endpoints:"))
@@ -202,6 +232,7 @@ func apiAction(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  GET /api/v1/playlist/list\n")
 	fmt.Printf("  GET /api/v1/playlist/{video_id}\n")
 	fmt.Printf("  GET /api/v1/path-suggestions\n")
+	fmt.Printf("  POST /api/v1/generate-playlist\n")
 
 	return http.ListenAndServe(addr, handler)
 }
