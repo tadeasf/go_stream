@@ -3,7 +3,7 @@ import { useQuery } from 'react-query';
 import { Container, Box, CircularProgress, Button } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/UseAuth';
 import VideoPlayer from '../components/VideoPlayer';
 import Grid from '../components/Grid';
 import { GridSortModel } from '@mui/x-data-grid';
@@ -56,8 +56,8 @@ function Player() {
     if (!videos || sortModel.length === 0) return videos;
     const { field, sort } = sortModel[0];
     return [...videos].sort((a, b) => {
-      let aValue: string | number = a[field as keyof Video];
-      let bValue: string | number = b[field as keyof Video];
+      const aValue: string | number = a[field as keyof Video];
+      const bValue: string | number = b[field as keyof Video];
 
       if (aValue < bValue) return sort === 'asc' ? -1 : 1;
       if (aValue > bValue) return sort === 'asc' ? 1 : -1;

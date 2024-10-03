@@ -4,6 +4,7 @@ import { IconButton } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQueryClient } from 'react-query';
 import axios from 'axios';
+import { Checkbox } from '@mui/material';
 
 // Replace the hardcoded API_URL with a function to get the base URL
 const getApiUrl = () => {
@@ -18,12 +19,13 @@ interface Video {
 
 interface GridProps {
   videos: Video[];
-  onVideoSelect: (videoPath: string, videoId: string) => void;
+  onVideoSelect: (videoPath: string, videoId: string, isSelected: boolean) => void;
   currentVideoId: string | null;
   onSortModelChange: (model: GridSortModel) => void;
+  showCheckbox?: boolean;
 }
 
-function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: GridProps) {
+function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange, showCheckbox = false }: GridProps) {
   const [rows, setRows] = useState<Video[]>([]);
   const queryClient = useQueryClient();
 
@@ -56,6 +58,16 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: Grid
   };
 
   const columns: GridColDef[] = [
+    showCheckbox ? {
+      field: 'checkbox',
+      headerName: '',
+      width: 50,
+      renderCell: (params: GridRenderCellParams<Video>) => (
+        <Checkbox
+          onChange={(event) => onVideoSelect(params.row.path, params.row.id, event.target.checked)}
+        />
+      ),
+    } : null,
     { field: 'id', headerName: 'ID', width: 70 },
     { field: 'path', headerName: 'Name', width: 500 },
     {
@@ -69,13 +81,13 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: Grid
       field: 'actions',
       headerName: 'Actions',
       width: 100,
-      renderCell: (params) => (
+      renderCell: (params: GridRenderCellParams<Video>) => (
         <IconButton onClick={() => deleteMutation.mutate(params.row.id)}>
           <DeleteIcon />
         </IconButton>
       ),
     },
-  ];
+  ].filter(Boolean) as GridColDef[];
 
   return (
     <DataGrid
@@ -87,7 +99,7 @@ function Grid({ videos, onVideoSelect, currentVideoId, onSortModelChange }: Grid
         },
       }}
       pageSizeOptions={[5, 10, 25, 50, 100, 250]}
-      onRowClick={(params: GridRowParams) => onVideoSelect(`${getApiUrl()}/videos/${params.row.path}`, params.row.id)}
+      onRowClick={(params: GridRowParams) => onVideoSelect(params.row.path, params.row.id, false)}
       autoHeight
       onSortModelChange={onSortModelChange}
       getRowClassName={(params) => params.id === currentVideoId ? 'Mui-selected' : ''}

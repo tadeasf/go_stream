@@ -54,7 +54,7 @@ function VideoPlayer({ selectedVideo, onReady, onPrevNext, currentVideoId }: Vid
         volume={volume}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onVolumeChange={(e: any) => handleVolumeChange(parseFloat(e.target.volume))}
+        onVolumeChange={(e: React.SyntheticEvent<HTMLMediaElement, Event>) => handleVolumeChange(parseFloat((e.target as HTMLMediaElement).volume.toString()))}
         onReady={onReady}
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2, gap: 2 }}>
